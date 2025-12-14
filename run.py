@@ -6,10 +6,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import os
 
-# Page configuration
-st.set_page_config(page_title="DOCX Translator", page_icon="📄", layout="wide")
-st.title("🚀 DOCX Document Translator (Multilingual Translation)")
-
+header_col1, header_col2 = st.columns([8, 2])
+with header_col1:
+    st.title("📄 DOCX Document Language Translator")  # 按要求修改标题
+with header_col2:
+    
+    # 署名样式优化（灰色小字+右对齐，不突兀）
+    st.markdown(
+        "<p style='text-align: right; color: #666666; font-size: 14px; margin-top: 20px;'>By XIE LI DONG</p>",
+        unsafe_allow_html=True
+    )
 # Added usage tip below title
 st.info("""
 💡 **Usage Tip**: If your file is in PDF format, convert it to DOCX first via [ILovePDF](https://www.ilovepdf.com/). 
@@ -193,3 +199,4 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
