@@ -17,7 +17,6 @@ After translation, you can convert the DOCX back to PDF using ILovePDF if needed
 I tried integrating PDF-DOCX conversion directly into Streamlit, but it drastically slowed down the entire application.
 """)
 st.markdown("---")
-st.markdown("---")
 
 # Define supported languages (Name: deep-translator code)
 SUPPORT_LANGUAGES = {
@@ -178,4 +177,5 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
 
