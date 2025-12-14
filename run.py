@@ -1,4 +1,3 @@
-
 import streamlit as st
 import tempfile
 from docx import Document
@@ -7,73 +6,74 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import os
 
-# 页面配置
-st.set_page_config(page_title="DOCX翻译器", page_icon="📄", layout="wide")
-st.title("🚀 DOCX文档翻译器（多语言互译）")
+# Page configuration
+st.set_page_config(page_title="DOCX Translator", page_icon="📄", layout="wide")
+st.title("🚀 DOCX Document Translator (Multilingual Translation)")
 st.markdown("---")
 
-# 定义支持的语言（名称: deep-translator对应代码）
+# Define supported languages (Name: deep-translator code)
 SUPPORT_LANGUAGES = {
-    "中文": "zh-CN",
-    "英语": "en",
-    "法语": "fr",
-    "德语": "de",
-    "西班牙语": "es",
-    "阿拉伯语": "ar",
-    "日语": "ja",
-    "韩语": "ko"
+    "Chinese": "zh-CN",
+    "English": "en",
+    "French": "fr",
+    "German": "de",
+    "Spanish": "es",
+    "Arabic": "ar",
+    "Japanese": "ja",
+    "Korean": "ko"
 }
-# 提取语言名称列表（用于下拉框）
+# Extract language name list (for dropdown)
 LANG_NAMES = list(SUPPORT_LANGUAGES.keys())
 
-# 上传文件
-uf = st.file_uploader("选择Word文档 (.docx)", type=["docx"])
+# File upload
+uf = st.file_uploader("Select Word Document (.docx)", type=["docx"])
 
 if uf:
-    # 文件信息
+    # File information
     c1, c2 = st.columns([2,1])
-    with c1: st.success(f"📁 **文件:** {uf.name}")
-    with c2: st.metric("大小", f"{uf.size/(1024*1024):.2f} MB")
+    with c1: st.success(f"📁 **File:** {uf.name}")
+    with c2: st.metric("Size", f"{uf.size/(1024*1024):.2f} MB")
     st.markdown("---")
 
-    # 翻译设置（多语言互译下拉框）
+    # Translation settings (multilingual dropdown)
     c1, c2, c3 = st.columns(3)
     with c1:
         source_lang_name = st.selectbox(
-            "**源语言**",
+            "**Source Language**",
             LANG_NAMES,
-            index=LANG_NAMES.index("法语")  # 默认源语言为法语
+            index=LANG_NAMES.index("French")  # Default source: French
         )
-        # 转换为deep-translator识别的代码
+        # Convert to deep-translator code
         source_lang = SUPPORT_LANGUAGES[source_lang_name]
     with c2:
         target_lang_name = st.selectbox(
-            "**目标语言**",
+            "**Target Language**",
             LANG_NAMES,
-            index=LANG_NAMES.index("英语")  # 默认目标语言为英语
+            index=LANG_NAMES.index("English")  # Default target: English
         )
         target_lang = SUPPORT_LANGUAGES[target_lang_name]
     with c3:
-        wk = st.slider("**线程数**", 1, 8, 3)
+        # Thread count limited to 1-3
+        wk = st.slider("**Thread Count**", 1, 3, 1)  # Default: 1 (more stable)
 
-    if st.button("🚀 开始翻译", type="primary", use_container_width=True):
-        # 用文本区域显示进度日志
+    if st.button("🚀 Start Translation", type="primary", use_container_width=True):
+        # Progress log area
         log_area = st.empty()
         log = []
 
-        # 临时文件
+        # Temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
             tmp.write(uf.getvalue())
             fp = tmp.name
 
         try:
             stt = time.time()
-            # 分析文档
+            # Parse document
             doc = Document(fp)
             ti, at = [], []  # text_items, all_texts
-            pc, cc = 0, 0    # 段落/表格计数
+            pc, cc = 0, 0    # paragraph/table count
 
-            # 提取文本
+            # Extract text
             for p in doc.paragraphs:
                 if txt := p.text.strip():
                     ti.append((p, txt))
@@ -90,83 +90,83 @@ if uf:
 
             total = len(at)
             if total == 0:
-                st.error("❌ 文档无有效文本")
+                st.error("❌ No valid text in document")
                 st.stop()
 
-            # 初始日志（显示语言信息）
-            log.append(f"✅ 共提取 {total} 段待翻译文字")
-            log.append(f"🔤 翻译方向: {source_lang_name} → {target_lang_name}")
+            # Initial log (language info)
+            log.append(f"✅ Extracted {total} text segments for translation")
+            log.append(f"🔤 Translation direction: {source_lang_name} → {target_lang_name}")
             log_area.markdown("\n".join(log))
 
-            # 多线程翻译
-            ta = [None]*total  # 翻译结果
-            BS = 100  # 批次大小
-            def tb(txts):  # 批次翻译函数
+            # Multi-thread translation
+            ta = [None]*total  # translation results
+            BS = 100  # batch size
+            def tb(txts):  # batch translation function
                 return GoogleTranslator(source=source_lang, target=target_lang).translate_batch(txts)
 
             with ThreadPoolExecutor(max_workers=wk) as exe:
-                # 提交批次任务
+                # Submit batch tasks
                 futs = {}
                 for i in range(0, total, BS):
                     batch = at[i:i+BS]
                     fut = exe.submit(tb, batch)
-                    futs[fut] = i  # 记录批次起始索引
+                    futs[fut] = i  # record batch start index
 
-                # 处理结果+实时打日志
+                # Process results + real-time log
                 for fut in as_completed(futs):
                     start_idx = futs[fut]
                     res = fut.result()
-                    # 保存结果
+                    # Save results
                     for idx in range(len(res)):
                         if start_idx+idx < total:
                             ta[start_idx+idx] = res[idx]
-                    # 计算已翻译数量
+                    # Calculate completed count
                     done = sum(1 for x in ta if x is not None)
-                    # 每翻译10段打一次日志
+                    # Log every 10 segments
                     if done % 10 == 0:
-                        log.append(f"🔄 翻译中: {done}/{total}")
+                        log.append(f"🔄 Translating: {done}/{total}")
                         log_area.markdown("\n".join(log))
 
-            # 最终翻译完成日志
-            log.append(f"✅ 翻译完成: {total}/{total}")
+            # Final translation completion log
+            log.append(f"✅ Translation completed: {total}/{total}")
             log_area.markdown("\n".join(log))
 
-            # 更新文档
-            log.append("📝 更新文档中...")
+            # Update document
+            log.append("📝 Updating document...")
             log_area.markdown("\n".join(log))
             for idx, (p_obj, _) in enumerate(ti):
                 if ta[idx]:
                     p_obj.text = ta[idx]
 
-            # 保存下载
+            # Save for download
             op = fp.replace(".docx", "_translated.docx")
             doc.save(op)
             tot_t = time.time()-stt
 
             st.balloons()
-            st.success(f"### ✅ 翻译完成！（{source_lang_name} → {target_lang_name}）")
-            # 统计信息
-            c1,c2 = st.columns(2)  # 调整列数更紧凑
-            c1.metric("总耗时", f"{tot_t:.1f}秒")
-            c2.metric("平均速度", f"{total/tot_t:.1f}条/秒")
+            st.success(f"### ✅ Translation Completed!（{source_lang_name} → {target_lang_name}）")
+            # Statistics
+            c1,c2 = st.columns(2)  # Compact layout
+            c1.metric("Total Time", f"{tot_t:.1f}s")
+            c2.metric("Average Speed", f"{total/tot_t:.1f} segments/s")
 
-            # 下载按钮
+            # Download button
             st.markdown("---")
             with open(op, "rb") as f:
                 st.download_button(
-                    "📥 下载翻译文档", f,
-                    file_name=f"{source_lang_name}2{target_lang_name}_{uf.name}",  # 文件名带翻译方向
+                    "📥 Download Translated Document", f,
+                    file_name=f"{source_lang_name}2{target_lang_name}_{uf.name}",  # Filename with translation direction
                     use_container_width=True, type="primary"
                 )
 
         except Exception as e:
-            st.error("### ❌ 翻译失败")
+            st.error("### ❌ Translation Failed")
             st.exception(e)
         finally:
-            # 清理临时文件
+            # Clean up temporary files
             try:
                 os.unlink(fp)
                 if 'op' in locals() and os.path.exists(op):
                     os.unlink(op)
             except Exception as cleanup_e:
-                st.warning(f"⚠️ 临时文件清理失败: {cleanup_e}")
+                st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
