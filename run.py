@@ -19,7 +19,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-)
 
 # Added usage tip below title
 st.info("""
@@ -204,5 +203,6 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
 
 
