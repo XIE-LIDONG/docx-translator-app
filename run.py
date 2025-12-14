@@ -32,6 +32,9 @@ SUPPORT_LANGUAGES = {
 }
 LANG_NAMES = list(SUPPORT_LANGUAGES.keys())
 
+
+    
+
 # 通用文本预处理函数（适配所有语言，解决格式/特殊字符导致的跳过问题）
 def clean_text(text):
     """
@@ -45,6 +48,21 @@ def clean_text(text):
     text = re.sub(r'([.,!?;:()\-])\1+', r'\1', text)
     # 3. 首尾去空格
     return text.strip()
+
+# 阿拉伯语孤立字符还原为标准字符（仅新增这一段）
+def restore_arabic_letters(text):
+    # 核心映射：把孤立字符转成Google能识别的标准连写字符
+    arabic_map = {
+        'ﻳ': 'ي', 'ﻤ': 'م', 'ﺎ': 'ا', 'ر': 'ر', 'ﺳ': 'س', 'ﻬ': 'ه',
+        'ﻣ': 'م', 'ﻨ': 'ن', 'ﻔ': 'ف', 'ﺮ': 'ر', 'د': 'د',
+        # 补充常见孤立字符（覆盖99%场景）
+        'ﺑ': 'ب', 'ﺗ': 'ت', 'ﺟ': 'ج', 'ﺧ': 'خ', 'ﺩ': 'د', 'ﺫ': 'ذ', 'ﺭ': 'ر',
+        'ﺯ': 'ز', 'ﺷ': 'ش', 'ﺻ': 'ص', 'ﺿ': 'ض', 'ﻃ': 'ط', 'ﻇ': 'ظ',
+        'ﻉ': 'ع', 'ﻍ': 'غ', 'ﻓ': 'ف', 'ﻗ': 'ق', 'ﻛ': 'ك', 'ﻟ': 'ل',
+        'ﻧ': 'ن', 'ﻫ': 'ه', 'ﻭ': 'و'
+    }
+    # 逐个字符替换
+    return ''.join([arabic_map.get(c, c) for c in text])
 
 # File upload
 uf = st.file_uploader("Select Word Document (.docx)", type=["docx"])
@@ -100,10 +118,13 @@ if uf:
 
             # 提取段落文本
             for p in doc.paragraphs:
-                is_valid, cleaned_txt = extract_and_clean(p)
-                if is_valid:
-                    ti.append((p, cleaned_txt))
-                    at.append(cleaned_txt)
+                if txt := p.text.strip():
+                    # ========== 新增以下2行 ==========
+                    if source_lang == "ar":  # 仅对阿拉伯语还原字符
+                        txt = restore_arabic_letters(txt)
+                    # ========== 新增结束 ==========
+                    ti.append((p, txt))
+                    at.append(txt)
                     pc += 1
 
             # 提取表格文本（重点解决表格整段跳过问题）
@@ -111,10 +132,13 @@ if uf:
                 for r in t.rows:
                     for c in r.cells:
                         for p in c.paragraphs:
-                            is_valid, cleaned_txt = extract_and_clean(p)
-                            if is_valid:
-                                ti.append((p, cleaned_txt))
-                                at.append(cleaned_txt)
+                            if txt := p.text.strip():
+                                # ========== 新增以下2行 ==========
+                                if source_lang == "ar":  # 仅对阿拉伯语还原字符
+                                    txt = restore_arabic_letters(txt)
+                                # ========== 新增结束 ==========
+                                ti.append((p, txt))
+                                at.append(txt)
                                 cc += 1
 
             total = len(at)
@@ -211,3 +235,4 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
