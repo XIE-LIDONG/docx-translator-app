@@ -9,6 +9,14 @@ import os
 # Page configuration
 st.set_page_config(page_title="DOCX Translator", page_icon="📄", layout="wide")
 st.title("🚀 DOCX Document Translator (Multilingual Translation)")
+
+# Added usage tip below title
+st.info("""
+💡 **Usage Tip**: If your file is in PDF format, convert it to DOCX first via [ILovePDF](https://www.ilovepdf.com/). 
+After translation, you can convert the DOCX back to PDF using ILovePDF if needed. 
+I tried integrating PDF-DOCX conversion directly into Streamlit, but it drastically slowed down the entire application.
+""")
+st.markdown("---")
 st.markdown("---")
 
 # Define supported languages (Name: deep-translator code)
@@ -170,3 +178,4 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
