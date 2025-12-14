@@ -1,1 +1,1 @@
-#it feld have two ways to use this 
+#it feld have two ways to use this https://docx-translator-app-id89euijvysspmvapptarhe.streamlit.app/，streamlit app ,or you can download exe ,use it on your windows computer ,but it will be a liitle slow ,best way is use it directly on streamlit website .
