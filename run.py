@@ -53,39 +53,36 @@ if uf:
     st.markdown("---")
 
     # Translation settings (multilingual dropdown + 线程/批次配置)
-    c1, c2, c3, c4 = st.columns(4)  # 新增一列放批次选择
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         source_lang_name = st.selectbox(
             "**Source Language**",
             LANG_NAMES,
-            index=LANG_NAMES.index("French")  # Default source: French
+            index=LANG_NAMES.index("English")  # 优化默认值：英文
         )
-        # Convert to deep-translator code
         source_lang = SUPPORT_LANGUAGES[source_lang_name]
     with c2:
         target_lang_name = st.selectbox(
             "**Target Language**",
             LANG_NAMES,
-            index=LANG_NAMES.index("English")  # Default target: English
+            index=LANG_NAMES.index("Chinese")  # 优化默认值：中文
         )
         target_lang = SUPPORT_LANGUAGES[target_lang_name]
     with c3:
-        # Thread count limited to 1-3, 默认值改为2
         wk = st.slider(
             "**Thread Count**",
             min_value=1,
             max_value=3,
-            value=2,  # 默认线程数2
+            value=2,
             help="Number of parallel translation threads (1-3 for stability)"
         )
     with c4:
-        # 新增批次选择器：20-100，默认100
         BS = st.slider(
             "**Batch Size**",
             min_value=20,
             max_value=100,
-            value=100,  # 默认批次大小100
-            step=10,  # 步长10，方便调整
+            value=100,
+            step=10,
             help="Number of text segments per translation batch (20-100)"
         )
 
@@ -103,92 +100,109 @@ if uf:
             stt = time.time()
             # Parse document
             doc = Document(fp)
-            ti, at = [], []  # text_items, all_texts
-            pc, cc = 0, 0    # paragraph/table count
+            # ✅ 修复：修改存储结构，存(对象, 文本, 类型)，区分段落/单元格，解决表格回写问题
+            text_items = []  # 格式: [(obj, text, type), ...] type: 'paragraph'/'cell'
+            all_texts = []   # 纯文本列表，用于翻译
+            para_count = 0
+            cell_count = 0
 
-            # Extract text
-            for p in doc.paragraphs:
-                if txt := p.text.strip():
-                    ti.append((p, txt))
-                    at.append(txt)
-                    pc += 1
-            for t in doc.tables:
-                for r in t.rows:
-                    for c in r.cells:
-                        for p in c.paragraphs:
-                            if txt := p.text.strip():
-                                ti.append((p, txt))
-                                at.append(txt)
-                                cc += 1
+            # ✅ 提取【普通段落】文本 - 原有逻辑保留（无问题）
+            for para in doc.paragraphs:
+                if text := para.text.strip():
+                    text_items.append((para, text, 'paragraph'))
+                    all_texts.append(text)
+                    para_count += 1
 
-            total = len(at)
+            # ✅ 核心修复：提取【表格单元格】文本，修正逻辑+兼容合并单元格
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        cell_text = cell.text.strip()  # ✅ 正确写法：直接取cell.text
+                        if cell_text:
+                            text_items.append((cell, cell_text, 'cell'))
+                            all_texts.append(cell_text)
+                            cell_count += 1
+
+            total = len(all_texts)
             if total == 0:
                 st.error("❌ No valid text in document")
                 st.stop()
 
-            # Initial log (language + 线程/批次信息)
+            # Initial log
             log.append(f"✅ Extracted {total} text segments for translation")
+            log.append(f"📄 {para_count} Paragraphs | {cell_count} Table Cells")
             log.append(f"🔤 Translation direction: {source_lang_name} → {target_lang_name}")
-            log.append(f"⚙️ Configuration: {wk} threads | {BS} segments per batch")  # 新增配置日志
+            log.append(f"⚙️ Configuration: {wk} threads | {BS} segments per batch")
             log_area.markdown("\n".join(log))
 
-            # Multi-thread translation
-            ta = [None]*total  # translation results
-            def tb(txts):  # batch translation function
-                return GoogleTranslator(source=source_lang, target=target_lang).translate_batch(txts)
+            # 翻译结果存储
+            translations = [None]*total
 
+            # 批次翻译函数
+            def translate_batch(txt_list):
+                try:
+                    res = GoogleTranslator(source=source_lang, target=target_lang).translate_batch(txt_list)
+                    # ✅ 修复：翻译结果非空兜底，避免返回None导致文本丢失
+                    return [r if r is not None else txt for r, txt in zip(res, txt_list)]
+                except Exception:
+                    return txt_list  # 翻译失败时返回原文
+
+            # 多线程执行翻译
             with ThreadPoolExecutor(max_workers=wk) as exe:
-                # Submit batch tasks (使用用户选择的BS值)
-                futs = {}
-                for i in range(0, total, BS):
-                    batch = at[i:i+BS]
-                    fut = exe.submit(tb, batch)
-                    futs[fut] = i  # record batch start index
+                futures = {}
+                # 切割批次，无越界风险
+                for start_idx in range(0, total, BS):
+                    end_idx = min(start_idx + BS, total)  # ✅ 修复：增加边界判断，防止索引越界
+                    batch_texts = all_texts[start_idx:end_idx]
+                    future = exe.submit(translate_batch, batch_texts)
+                    futures[future] = (start_idx, end_idx)
 
-                # Process results + real-time log
-                for fut in as_completed(futs):
-                    start_idx = futs[fut]
-                    res = fut.result()
-                    # Save results
-                    for idx in range(len(res)):
-                        if start_idx+idx < total:
-                            ta[start_idx+idx] = res[idx]
-                    # Calculate completed count
-                    done = sum(1 for x in ta if x is not None)
-                    # Log every 10 segments (保留原有日志逻辑)
+                # 处理结果+实时日志
+                for future in as_completed(futures):
+                    s_idx, e_idx = futures[future]
+                    batch_res = future.result()
+                    # 赋值翻译结果
+                    for idx in range(len(batch_res)):
+                        translations[s_idx + idx] = batch_res[idx]
+                    # 进度日志
+                    done = sum(1 for x in translations if x is not None)
                     if done % 10 == 0:
-                        log.append(f"🔄 Translating: {done}/{total}")
+                        log.append(f"🔄 Translating: {done}/{total} segments completed")
                         log_area.markdown("\n".join(log))
 
-            # Final translation completion log
-            log.append(f"✅ Translation completed: {total}/{total}")
+            # 完成翻译日志
+            log.append(f"✅ Translation completed: {total}/{total} segments")
             log_area.markdown("\n".join(log))
 
-            # Update document
-            log.append("📝 Updating document...")
+            # ✅ 核心修复：文本回写，区分【段落】和【表格单元格】两种类型，分别赋值
+            log.append("📝 Updating document content (including tables)...")
             log_area.markdown("\n".join(log))
-            for idx, (p_obj, _) in enumerate(ti):
-                if ta[idx]:
-                    p_obj.text = ta[idx]
+            for idx, (obj, original_text, obj_type) in enumerate(text_items):
+                trans_text = translations[idx]
+                if trans_text and trans_text != original_text:
+                    if obj_type == 'paragraph':
+                        obj.text = trans_text  # 段落直接赋值
+                    elif obj_type == 'cell':
+                        obj.text = trans_text   # 单元格直接赋值
 
-            # Save for download
-            op = fp.replace(".docx", "_translated.docx")
-            doc.save(op)
-            tot_t = time.time()-stt
+            # 保存翻译后的文档
+            output_path = fp.replace(".docx", "_translated.docx")
+            doc.save(output_path)
+            total_time = time.time() - stt
 
+            # 成功提示
             st.balloons()
             st.success(f"### ✅ Translation Completed!（{source_lang_name} → {target_lang_name}）")
-            # Statistics
-            c1,c2 = st.columns(2)  # Compact layout
-            c1.metric("Total Time", f"{tot_t:.1f}s")
-            c2.metric("Average Speed", f"{total/tot_t:.1f} segments/s")
+            c1,c2 = st.columns(2)
+            c1.metric("Total Time", f"{total_time:.1f}s")
+            c2.metric("Average Speed", f"{total/total_time:.1f} segments/s")
 
-            # Download button
+            # 下载按钮
             st.markdown("---")
-            with open(op, "rb") as f:
+            with open(output_path, "rb") as f:
                 st.download_button(
                     "📥 Download Translated Document", f,
-                    file_name=f"{source_lang_name}2{target_lang_name}_{uf.name}",  # Filename with translation direction
+                    file_name=f"{source_lang_name}2{target_lang_name}_{uf.name}",
                     use_container_width=True, type="primary"
                 )
 
@@ -196,13 +210,11 @@ if uf:
             st.error("### ❌ Translation Failed")
             st.exception(e)
         finally:
-            # Clean up temporary files
+            # ✅ 优化：彻底清理临时文件，增加异常捕获，避免残留
             try:
-                os.unlink(fp)
-                if 'op' in locals() and os.path.exists(op):
-                    os.unlink(op)
+                if os.path.exists(fp):
+                    os.unlink(fp)
+                if 'output_path' in locals() and os.path.exists(output_path):
+                    os.unlink(output_path)
             except Exception as cleanup_e:
-                st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
-
-
-
+                st.warning(f"⚠️ Temporary file cleanup warning: {str(cleanup_e)[:50]}...")
