@@ -100,28 +100,29 @@ if uf:
             stt = time.time()
             # Parse document
             doc = Document(fp)
-            # ✅ 修复：修改存储结构，存(对象, 文本, 类型)，区分段落/单元格，解决表格回写问题
-            text_items = []  # 格式: [(obj, text, type), ...] type: 'paragraph'/'cell'
-            all_texts = []   # 纯文本列表，用于翻译
+            # 存储结构：(段落对象, 文本, 类型)，类型分 paragraph/cell_para
+            text_items = []  
+            all_texts = []   
             para_count = 0
             cell_count = 0
 
-            # ✅ 提取【普通段落】文本 - 原有逻辑保留（无问题）
+            # 提取【普通段落】文本
             for para in doc.paragraphs:
                 if text := para.text.strip():
                     text_items.append((para, text, 'paragraph'))
                     all_texts.append(text)
                     para_count += 1
 
-            # ✅ 核心修复：提取【表格单元格】文本，修正逻辑+兼容合并单元格
+            # 【最终修复】提取【表格单元格】文本：获取单元格内的段落对象
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
-                        cell_text = cell.text.strip()  # ✅ 正确写法：直接取cell.text
-                        if cell_text:
-                            text_items.append((cell, cell_text, 'cell'))
-                            all_texts.append(cell_text)
-                            cell_count += 1
+                        for para in cell.paragraphs:  # 单元格内的段落是可修改的对象
+                            cell_text = para.text.strip()
+                            if cell_text:
+                                text_items.append((para, cell_text, 'cell_para'))
+                                all_texts.append(cell_text)
+                                cell_count += 1
 
             total = len(all_texts)
             if total == 0:
@@ -142,7 +143,6 @@ if uf:
             def translate_batch(txt_list):
                 try:
                     res = GoogleTranslator(source=source_lang, target=target_lang).translate_batch(txt_list)
-                    # ✅ 修复：翻译结果非空兜底，避免返回None导致文本丢失
                     return [r if r is not None else txt for r, txt in zip(res, txt_list)]
                 except Exception:
                     return txt_list  # 翻译失败时返回原文
@@ -150,9 +150,8 @@ if uf:
             # 多线程执行翻译
             with ThreadPoolExecutor(max_workers=wk) as exe:
                 futures = {}
-                # 切割批次，无越界风险
                 for start_idx in range(0, total, BS):
-                    end_idx = min(start_idx + BS, total)  # ✅ 修复：增加边界判断，防止索引越界
+                    end_idx = min(start_idx + BS, total)
                     batch_texts = all_texts[start_idx:end_idx]
                     future = exe.submit(translate_batch, batch_texts)
                     futures[future] = (start_idx, end_idx)
@@ -161,10 +160,8 @@ if uf:
                 for future in as_completed(futures):
                     s_idx, e_idx = futures[future]
                     batch_res = future.result()
-                    # 赋值翻译结果
                     for idx in range(len(batch_res)):
                         translations[s_idx + idx] = batch_res[idx]
-                    # 进度日志
                     done = sum(1 for x in translations if x is not None)
                     if done % 10 == 0:
                         log.append(f"🔄 Translating: {done}/{total} segments completed")
@@ -174,16 +171,13 @@ if uf:
             log.append(f"✅ Translation completed: {total}/{total} segments")
             log_area.markdown("\n".join(log))
 
-            # ✅ 核心修复：文本回写，区分【段落】和【表格单元格】两种类型，分别赋值
+            # 【最终修复】文本回写：统一修改段落对象（普通段落/单元格内的段落）
             log.append("📝 Updating document content (including tables)...")
             log_area.markdown("\n".join(log))
-            for idx, (obj, original_text, obj_type) in enumerate(text_items):
+            for idx, (para_obj, original_text, obj_type) in enumerate(text_items):
                 trans_text = translations[idx]
                 if trans_text and trans_text != original_text:
-                    if obj_type == 'paragraph':
-                        obj.text = trans_text  # 段落直接赋值
-                    elif obj_type == 'cell':
-                        obj.text = trans_text   # 单元格直接赋值
+                    para_obj.text = trans_text  # 无论普通段落还是单元格内的段落，都修改para.text
 
             # 保存翻译后的文档
             output_path = fp.replace(".docx", "_translated.docx")
@@ -210,7 +204,7 @@ if uf:
             st.error("### ❌ Translation Failed")
             st.exception(e)
         finally:
-            # ✅ 优化：彻底清理临时文件，增加异常捕获，避免残留
+            # 清理临时文件
             try:
                 if os.path.exists(fp):
                     os.unlink(fp)
