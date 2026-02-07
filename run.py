@@ -9,7 +9,6 @@ import os
 # Page configuration
 st.set_page_config(page_title="DOCX Document language Translator", page_icon="📄", layout="wide")
 
-# 标题+署名：同一行布局（标题左，署名右）
 st.markdown(
     """
     <div style='display: flex; justify-content: space-between; align-items: center;'>
@@ -52,8 +51,8 @@ if uf:
     with c2: st.metric("Size", f"{uf.size/(1024*1024):.2f} MB")
     st.markdown("---")
 
-    # Translation settings (multilingual dropdown + 线程/批次配置)
-    c1, c2, c3, c4 = st.columns(4)  # 新增一列放批次选择
+
+    c1, c2, c3, c4 = st.columns(4)  
     with c1:
         source_lang_name = st.selectbox(
             "**Source Language**",
@@ -70,22 +69,21 @@ if uf:
         )
         target_lang = SUPPORT_LANGUAGES[target_lang_name]
     with c3:
-        # Thread count limited to 1-3, 默认值改为2
+        # Thread count limited to 1-3
         wk = st.slider(
             "**Thread Count**",
             min_value=1,
             max_value=3,
-            value=2,  # 默认线程数2
+            value=2,  
             help="Number of parallel translation threads (1-3 for stability)"
         )
     with c4:
-        # 新增批次选择器：20-100，默认100
         BS = st.slider(
             "**Batch Size**",
             min_value=20,
             max_value=100,
-            value=100,  # 默认批次大小100
-            step=10,  # 步长10，方便调整
+            value=100,  
+            step=10,  
             help="Number of text segments per translation batch (20-100)"
         )
 
@@ -126,10 +124,10 @@ if uf:
                 st.error("❌ No valid text in document")
                 st.stop()
 
-            # Initial log (language + 线程/批次信息)
+
             log.append(f"✅ Extracted {total} text segments for translation")
             log.append(f"🔤 Translation direction: {source_lang_name} → {target_lang_name}")
-            log.append(f"⚙️ Configuration: {wk} threads | {BS} segments per batch")  # 新增配置日志
+            log.append(f"⚙️ Configuration: {wk} threads | {BS} segments per batch")  
             log_area.markdown("\n".join(log))
 
             # Multi-thread translation
@@ -138,7 +136,6 @@ if uf:
                 return GoogleTranslator(source=source_lang, target=target_lang).translate_batch(txts)
 
             with ThreadPoolExecutor(max_workers=wk) as exe:
-                # Submit batch tasks (使用用户选择的BS值)
                 futs = {}
                 for i in range(0, total, BS):
                     batch = at[i:i+BS]
@@ -155,7 +152,6 @@ if uf:
                             ta[start_idx+idx] = res[idx]
                     # Calculate completed count
                     done = sum(1 for x in ta if x is not None)
-                    # Log every 10 segments (保留原有日志逻辑)
                     if done % 10 == 0:
                         log.append(f"🔄 Translating: {done}/{total}")
                         log_area.markdown("\n".join(log))
@@ -203,6 +199,7 @@ if uf:
                     os.unlink(op)
             except Exception as cleanup_e:
                 st.warning(f"⚠️ Temporary file cleanup failed: {cleanup_e}")
+
 
 
 
