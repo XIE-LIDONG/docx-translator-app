@@ -1,1 +1,15 @@
-#it feld have two ways to use this https://docx-translator-app-id89euijvysspmvapptarhe.streamlit.app/，streamlit app ,or you can download exe ,use it on your windows computer ,but it will be a liitle slow ,best way is use it directly on streamlit website .
+Word Document Translation Tool
+
+Author: XIE LIDONG
+
+Project Overview
+Python/Streamlit-based DOCX translator with format preservation, supporting 8 languages and configurable multi-threading/batch processing.
+Core: Python, Streamlit
+Translation: Google Translate API
+Performance: Multi-threading, Batch Processing
+Document: python-docx, Tempfile
+Key Features
+Format-preserving translation (paragraphs/tables)
+Adjustable threads (1-3) & batch size (20-100 segments)
+Real-time progress tracking + one-click download
+Auto cleanup of temporary files
